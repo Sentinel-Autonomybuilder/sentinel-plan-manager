@@ -2,19 +2,26 @@
 // Express backend for Sentinel dVPN plan management.
 // Modules: lib/constants, lib/cache, lib/errors, lib/protobuf, lib/chain, lib/wallet
 
+import 'dotenv/config';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { listNodes, registerCleanupHandlers, disconnect } from '../Sentinel SDK/js-sdk/index.js';
+import {
+  listNodes,
+  registerCleanupHandlers,
+  disconnect,
+  cached,
+  cacheInvalidate,
+  cacheClear,
+  ErrorCodes,
+  isRetryable,
+  userMessage,
+} from 'blue-js-sdk';
 
 // ─── Module Imports ──────────────────────────────────────────────────────────
 import { PORT, LCD_ENDPOINTS, RPC_PROVIDERS, RPC_ENDPOINTS, NODE_CACHE_TTL } from './lib/constants.js';
 import * as C from './lib/constants.js';
-// Cache: SDK's disk-cache (superset of lib/cache — adds disk persistence + cacheInfo)
-import { cached, cacheInvalidate, cacheClear } from '../Sentinel SDK/js-sdk/disk-cache.js';
-// Errors: SDK's typed error system (ErrorCodes, severity, isRetryable, userMessage)
-import { ErrorCodes, isRetryable, userMessage } from '../Sentinel SDK/js-sdk/errors.js';
 // Chain error parsing + plan-specific helpers (kept local — SDK's parseChainError lacks plan/lease patterns)
 import { parseChainError, isLeaseNotFound, isDuplicateNode, txResponse } from './lib/errors.js';
 import { lcd, getDvpnPrice, getSigningClient, resetSigningClient, safeBroadcast, getRpcClient, rpcQueryNode } from './lib/chain.js';
@@ -1954,6 +1961,22 @@ if (_savedMnemonic) {
     console.error('Failed to restore wallet:', err.message);
     clearWalletState();
   });
+} else {
+  const envPath = join(__dirname, '.env');
+  const envMnemonic = existsSync(envPath)
+    ? (readFileSync(envPath, 'utf8').match(/^MNEMONIC=(.+)$/m)?.[1] || '').trim()
+    : '';
+  const isPlaceholder = /your twelve or twenty four/i.test(envMnemonic);
+  if (envMnemonic && !isPlaceholder) {
+    initWallet(envMnemonic).then(() => {
+      console.log(`[wallet] Loaded from .env: ${getAddr()}`);
+    }).catch(err => {
+      console.error(`[wallet] Failed to load from .env: ${err.message}`);
+      clearWalletState();
+    });
+  } else {
+    console.warn('[wallet] No wallet loaded. Create one in the UI, or set MNEMONIC=... in .env (copy from .env.example). Chain writes (plans, links, grants) are disabled until a wallet is present.');
+  }
 }
 
 const server = app.listen(PORT, () => {

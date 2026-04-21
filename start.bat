@@ -9,12 +9,18 @@ if %errorlevel% neq 0 (
 )
 
 cd /d "%~dp0"
-echo Killing port 3003...
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr :3003 ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+
+REM Honour PORT env var, default to 3003
+if "%PORT%"=="" set PORT=3003
+
+echo Killing anything listening on port %PORT%...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :%PORT% ^| findstr LISTENING') do taskkill /F /PID %%a >nul 2>&1
+
 if not exist node_modules (
     echo Installing dependencies...
     npm install
 )
-echo Starting Plan Manager on http://localhost:3003
+
+echo Starting Plan Manager on http://localhost:%PORT%
 node server.js
 pause

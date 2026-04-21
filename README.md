@@ -41,18 +41,26 @@ See [`MANIFESTO.md`](./MANIFESTO.md) for the full vision.
 git clone https://github.com/Sentinel-Autonomybuilder/sentinel-plan-manager.git
 cd sentinel-plan-manager
 npm install
-echo "MNEMONIC=your twelve or twenty four word mnemonic here" > .env
+cp .env.example .env    # then edit .env and paste your mnemonic
 npm start
 ```
 
+> Windows: `copy .env.example .env`
+
 Open http://localhost:3003.
+
+**Port in use?** `PORT=4000 npm start` — the server honours the `PORT` env var (default 3003).
 
 **Windows:** `start.bat` auto-elevates to Administrator, kills anything on :3003, and launches the server.
 
 ### Requirements
-- Node.js 18+
+- Node.js 20+
 - A Cosmos wallet with P2P (udvpn) tokens on the Sentinel mainnet
-- Sibling checkout of [`blue-js-sdk`](https://github.com/Sentinel-Autonomybuilder/blue-js-sdk) at `../Sentinel SDK/js-sdk/` (see [SDK Dependency](#sdk-dependency) below)
+
+`blue-js-sdk` is pulled in via `npm install` — no sibling checkout needed.
+
+### About npm audit warnings
+`npm install` will report ~9 vulnerabilities in transitive `@cosmjs/*` dependencies (the elliptic-curve crypto lib). These come from upstream cosmjs, are not introduced by this project, and cannot be patched here — they're tracked by the Cosmos SDK maintainers (see [cosmos/cosmjs#1708](https://github.com/cosmos/cosmjs/issues/1708)). Don't run `npm audit fix --force` — it will break the build.
 
 ---
 
@@ -62,28 +70,26 @@ This project is a **consumer app** of [**blue-js-sdk**](https://github.com/Senti
 
 ### Modules Imported
 
-| SDK Module | Used For |
+| SDK Export | Used For |
 |---|---|
-| `js-sdk/index.js` → `listNodes`, `registerCleanupHandlers`, `disconnect` | Full mainnet node scan (concurrency 30, ~900+ nodes) and graceful shutdown. |
-| `js-sdk/disk-cache.js` → `cached`, `cacheInvalidate`, `cacheClear` | Stale-while-revalidate caching for node scans, subscriptions, fee-grant lookups. |
-| `js-sdk/errors.js` → `ErrorCodes`, `isRetryable`, `userMessage` | Typed error codes surfaced to the UI with human-readable messages. |
-| `js-sdk/cosmjs-setup.js` → `getDvpnPrice` | Live P2P → USD pricing from CoinGecko. |
-| `js-sdk/chain/rpc.js` → RPC helpers | Direct protobuf node queries (**~912× faster** than LCD for single-node lookups). |
+| `listNodes`, `registerCleanupHandlers`, `disconnect` | Full mainnet node scan (concurrency 30, ~900+ nodes) and graceful shutdown. |
+| `cached`, `cacheInvalidate`, `cacheClear` | Stale-while-revalidate caching for node scans, subscriptions, fee-grant lookups. |
+| `ErrorCodes`, `isRetryable`, `userMessage` | Typed error codes surfaced to the UI with human-readable messages. |
+| `getDvpnPrice` | Live P2P → USD pricing from CoinGecko. |
+| `createRpcQueryClient`, `rpcQueryNode`, `rpcQueryNodes`, `rpcQueryNodesForPlan` | Direct protobuf node queries (**~912× faster** than LCD for single-node lookups). |
+
+All imported from the top-level `blue-js-sdk` package entry.
 
 Everything outside those imports — plan creation, node linking, lease mechanics, fee-grant batching, the full HTTP API, the SPA frontend — is built on top in this repo.
 
 ### SDK Dependency
 
-The SDK is imported via relative path. Clone both repos side-by-side:
+The SDK is installed from npm as `blue-js-sdk` — `npm install` pulls it automatically, no sibling checkout required.
 
 ```
 your-workspace/
-├── Sentinel SDK/
-│   └── js-sdk/           ← clone blue-js-sdk here
-└── plans/                ← this repo
+└── plans/                 ← this repo (blue-js-sdk lives in node_modules)
 ```
-
-> The SDK will be published to npm in a future release; until then, the sibling-directory layout is required.
 
 ---
 
