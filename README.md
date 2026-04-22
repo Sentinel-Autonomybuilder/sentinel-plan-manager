@@ -45,6 +45,19 @@ See [PLANS.md](./PLANS.md) for the full breakdown: plan lifecycle, plan-based vs
 
 ## Quick Start
 
+> **This tool operates on Sentinel mainnet. Every transaction costs real P2P tokens. There is no testnet mode.**
+
+### Option A — npm (recommended, one-shot)
+
+```bash
+npm install -g sentinel-plan-manager
+plans --help                                # verify install
+echo "MNEMONIC=word1 word2 ... word24" > .env
+npx sentinel-plan-manager                   # or: node $(npm root -g)/sentinel-plan-manager/server.js
+```
+
+### Option B — git clone (for contributors)
+
 ```bash
 git clone https://github.com/Sentinel-Autonomybuilder/sentinel-plan-manager.git
 cd sentinel-plan-manager
@@ -62,10 +75,48 @@ Open http://localhost:3003.
 **Windows:** `start.bat` auto-elevates to Administrator, kills anything on :3003, and launches the server.
 
 ### Requirements
-- Node.js 20+
-- A Cosmos wallet with P2P (udvpn) tokens on the Sentinel mainnet
+- **Node.js 20+**
+- **A Cosmos wallet** — generate with Keplr/Leap browser extension, or any Cosmos SDK key tool. The mnemonic goes into `.env` as `MNEMONIC=...`.
+- **P2P (udvpn) tokens on the Sentinel mainnet** — acquire via:
+  - [Osmosis DEX](https://app.osmosis.zone) (swap any IBC asset for DVPN, then IBC-transfer to `sentinelhub-2`)
+  - Any Cosmos IBC bridge supporting Sentinel
+- **Minimum balance for full setup: ~5–10 P2P**, broken down:
+
+| Operation | Approximate P2P cost |
+|---|---|
+| Register as provider (one-time) | ~0.5 |
+| Create a plan | ~0.5 |
+| Link one node (includes auto-lease deposit) | ~1–2 |
+| Batch-link 5 nodes | ~5–8 |
+| Issue one fee grant | ~0.1 |
+| Revoke one fee grant | ~0.1 |
+| Start a plan session (usually operator-funded) | ~0.2 |
+
+A fresh operator registering, creating one plan, and linking 5 nodes should budget **~8 P2P** to be safe.
 
 `blue-js-sdk` is pulled in via `npm install` — no sibling checkout needed.
+
+### First Run — 0 to Live Plan in 6 Steps
+
+After `npm start`, open http://localhost:3003 and go in order:
+
+1. **Wallet tab** — paste mnemonic (or set `MNEMONIC=` in `.env` before start). Confirm balance shows ≥ 5 P2P.
+2. **Provider tab** — click **Register Provider**. One-time. Creates your `sentprov1...` on-chain. ~0.5 P2P.
+3. **Plans tab** — click **Create Plan**. Set GB, days, and price per GB. Pricing is immutable (v3). ~0.5 P2P.
+4. **Plans tab** — set plan status to `active` (1). Subscribers can't join an inactive plan.
+5. **Nodes tab** — filter by country/protocol, select nodes, click **Batch Link to Plan**. Auto-leases any node that needs it. ~1–2 P2P per node.
+6. **Fee Grants tab** — once subscribers exist, click **Grant All Subscribers**. Batches 5 per TX so end users pay zero gas.
+
+CLI equivalent:
+
+```bash
+plans wallet info
+plans provider register
+plans plan create --gb 10 --days 30 --price-udvpn 500000
+plans plan status <id> 1
+plans batch-link <id> sentnode1abc...,sentnode1def...
+plans feegrant grant-subscribers <id> --spend-limit-dvpn 10 --expiration-days 30
+```
 
 ### About npm audit warnings
 `npm install` will report 7 low-severity warnings — all from `elliptic` (GHSA-848j-6mx2-7j84), a timing side-channel in ECDSA that has no upstream fix and affects every Cosmos SDK JS client. The criticals (`protobufjs`, `@confio/ics23`) are already pinned to fixed versions via `package.json` `overrides`. Don't run `npm audit fix --force` — it will break the build by downgrading `blue-js-sdk`'s locked cosmjs versions.
@@ -108,7 +159,7 @@ plans plan list
 plans plan mine
 plans plan get 42
 plans plan create --gb 10 --days 30 --price-udvpn 500000
-plans plan status 42 1          # 1=active, 2=inactive
+plans plan status 42 1          # 1=active, 3=inactive (2 is chain-set only, never pass it)
 plans plan subscribers 42
 
 # Nodes
@@ -314,6 +365,19 @@ The mnemonic stays in memory only; `.wallet.json` persists the address for UI re
 
 ---
 
+## Troubleshooting — Errors You'll Hit in Order
+
+| Chain error | What it means | Fix |
+|---|---|---|
+| `insufficient funds` | Wallet has < gas cost | Send more P2P to the wallet address. See Requirements table for minimums. |
+| `status must be one of [active, inactive]` | You passed `status=2` to `plan status` | Use `1` (active) or `3` (inactive). Never `2` — that's chain-managed only. |
+| `fee allowance already exists` | Grantee already has an active grant | Call `feegrant revoke <grantee>` first, then re-grant. Or skip — grant still works. |
+| `lease already exists for node` | Node is already leased by your provider | Use `lease list` to find it, or skip the lease TX (link will reuse it). |
+| `account sequence mismatch` | Two concurrent TXs from same wallet | Built-in sequence retry handles this (5 attempts, exponential backoff). If it still fails, wait 30s and retry manually. |
+| `rpcQueryFeeGrantsIssued` returns `[]` | Blue JS SDK bug against Sentinel RPC | Server auto-falls back to LCD. No user action needed. |
+
+---
+
 ## Development
 
 ```bash
@@ -341,7 +405,7 @@ node server.js      # same, without npm
 
 ## License & Attribution
 
-- **This project:** open to contributions. License TBD — see repo metadata.
+- **This project:** MIT — see [LICENSE](./LICENSE).
 - **blue-js-sdk:** MIT — https://github.com/Sentinel-Autonomybuilder/blue-js-sdk
 - **Sentinel chain:** independent, permissionless — not operated or endorsed by this project.
 
